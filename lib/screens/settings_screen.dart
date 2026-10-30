@@ -12,12 +12,6 @@ import '../services/vod_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/widgets.dart';
 
-Future<void> _importBundledSources(SettingsStore store) async {
-  final text =
-      await rootBundle.loadString('assets/config/veliora-sources.json');
-  await store.importConfigJson(text);
-}
-
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -786,22 +780,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: '添加自定义源',
                 ),
                 const SizedBox(height: 12),
-                // 竖排大按钮：遥控器上下最好走
-                _TvActionRow(
-                  order: 19,
-                  icon: Icons.inventory_2_outlined,
-                  title: '一键导入内置源',
-                  subtitle: '不用 U 盘 / 手机，直接装好常用采集源',
-                  accent: AppTheme.neon,
-                  onTap: () async {
-                    try {
-                      await _importBundledSources(store);
-                      _toast('内置源已导入');
-                    } catch (e) {
-                      _toast('导入失败：$e');
-                    }
-                  },
-                ),
+                // 竖排大按钮：遥控器上下最好走（不内置采集源，需自行添加）
                 _TvActionRow(
                   order: 20,
                   icon: Icons.qr_code_2,

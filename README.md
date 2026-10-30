@@ -90,13 +90,13 @@ assets/              # 默认源配置、手机配源页、品牌图
 
 ## Configuration
 
-应用不内置商业片源。请在 **设置** 中：
+应用**不内置任何采集源**。请在 **设置** 中自行添加：
 
 1. 扫码用手机添加 MacCMS `api.php/provide/vod` 地址，或
-2. 导入 JSON（兼容常见 LibreTV / 同类 settings 格式），或
+2. 粘贴 / 导入 JSON（兼容常见 LibreTV / 同类 settings 格式），或
 3. 电视端从 U 盘读取配置文件
 
-默认示例源仅作结构参考，可用性随上游变化，请自行维护。
+JSON 字段示例见 [`assets/config/sources.example.json`](assets/config/sources.example.json)（仅格式参考，无可用地址）。
 
 ## Disclaimer
 

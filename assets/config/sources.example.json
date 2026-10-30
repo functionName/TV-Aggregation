@@ -1,0 +1,10 @@
+{
+  "name": "TV-Aggregation-Sources",
+  "sources": [
+    {
+      "name": "示例源名称",
+      "url": "https://example.com/api.php/provide/vod",
+      "isAdult": false
+    }
+  ]
+}
