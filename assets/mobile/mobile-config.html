@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>影视聚合 · 手机设置</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1220; --card:#152238; --line:#2a3b55; --txt:#e8eef8; --muted:#8fa3bf; --acc:#3b82f6; --ok:#22c55e; --bad:#ef4444; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--txt); padding:16px; }
+    h1 { font-size:1.25rem; margin:0 0 4px; }
+    .sub { color:var(--muted); font-size:.9rem; margin-bottom:16px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:12px; }
+    label { display:block; font-size:.8rem; color:var(--muted); margin-bottom:4px; }
+    input[type=text], input[type=url], textarea {
+      width:100%; padding:10px 12px; border-radius:8px; border:1px solid var(--line);
+      background:#0d1626; color:var(--txt); font-size:16px; margin-bottom:10px;
+    }
+    textarea { min-height:140px; resize:vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:13px; line-height:1.4; }
+    .row { display:flex; gap:8px; align-items:center; }
+    .row input[type=checkbox] { width:18px; height:18px; }
+    button { appearance:none; border:0; border-radius:10px; padding:12px 14px; font-size:1rem; font-weight:600; cursor:pointer; }
+    .btn { background:var(--acc); color:#fff; width:100%; margin-top:8px; }
+    .btn.secondary { background:#24344d; }
+    .btn.danger { background:#7f1d1d; }
+    .btn.ok { background:var(--ok); color:#052e16; }
+    .src { border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }
+    .src:first-child { border-top:0; margin-top:0; padding-top:0; }
+    .src-title { font-weight:600; margin-bottom:8px; display:flex; justify-content:space-between; gap:8px; }
+    .msg { padding:10px 12px; border-radius:8px; margin-bottom:12px; display:none; }
+    .msg.show { display:block; }
+    .msg.ok { background:#14532d; }
+    .msg.err { background:#7f1d1d; }
+    .hint { font-size:.8rem; color:var(--muted); line-height:1.45; }
+    code { background:#0d1626; padding:1px 6px; border-radius:4px; }
+    .tabs { display:flex; gap:8px; margin-bottom:12px; }
+    .tab { flex:1; background:#24344d; color:var(--muted); }
+    .tab.on { background:var(--acc); color:#fff; }
+    .panel { display:none; }
+    .panel.on { display:block; }
+  </style>
+</head>
+<body>
+  <h1>影视聚合 · 手机设置</h1>
+  <p class="sub">与电视同一 Wi‑Fi。可逐条添加，或直接粘贴 JSON 导入。</p>
+  <div id="msg" class="msg"></div>
+
+  <div class="tabs">
+    <button type="button" class="btn tab on" id="tabList">逐条编辑</button>
+    <button type="button" class="btn tab" id="tabJson">粘贴 JSON</button>
+  </div>
+
+  <div id="panelList" class="panel on">
+    <div class="card">
+      <div id="list"></div>
+      <button class="btn secondary" type="button" id="btnAdd">＋ 添加一条</button>
+      <button class="btn ok" type="button" id="btnSave">保存到电视</button>
+      <button class="btn secondary" type="button" id="btnSaveForm">备用保存（表单方式）</button>
+      <button class="btn secondary" type="button" id="btnReload">重新加载</button>
+    </div>
+  </div>
+
+  <div id="panelJson" class="panel">
+    <div class="card">
+      <label>粘贴配置 JSON（支持 sources / customAPIs）</label>
+      <textarea id="jsonBox" placeholder='{"sources":[{"name":"示例","url":"https://example.com/api.php/provide/vod"}]}'></textarea>
+      <p class="hint">可从电脑复制整段配置粘贴到这里，点「导入并保存」会直接写入电视。</p>
+      <button class="btn secondary" type="button" id="btnParse">仅解析到上方列表</button>
+      <button class="btn ok" type="button" id="btnImportSave">导入并保存到电视</button>
+      <button class="btn secondary" type="button" id="btnImportForm">备用：表单方式导入</button>
+    </div>
+  </div>
+
+  <div class="card hint">
+    <p>接口需符合苹果 CMS V10：通常形如 <code>https://example.com/api.php/provide/vod</code></p>
+    <p>若点保存出现 Load failed：请用「备用保存」，或确认电视端二维码弹窗仍开着。</p>
+  </div>
+
+  <!-- 隐藏表单：兼容微信等拦截 fetch 的浏览器 -->
+  <form id="fallbackForm" method="POST" action="/api/config/form" style="display:none">
+    <input type="hidden" name="json" id="fallbackJson" value="" />
+  </form>
+
+  <script>
+    const API = (location.origin || '') + '/api/config';
+    const listEl = document.getElementById('list');
+    const msgEl = document.getElementById('msg');
+    const jsonBox = document.getElementById('jsonBox');
+    let sources = [];
+
+    function showMsg(text, ok) {
+      msgEl.textContent = text;
+      msgEl.className = 'msg show ' + (ok ? 'ok' : 'err');
+    }
+
+    function setTab(which) {
+      const listOn = which === 'list';
+      document.getElementById('tabList').classList.toggle('on', listOn);
+      document.getElementById('tabJson').classList.toggle('on', !listOn);
+      document.getElementById('panelList').classList.toggle('on', listOn);
+      document.getElementById('panelJson').classList.toggle('on', !listOn);
+    }
+
+    function render() {
+      listEl.innerHTML = '';
+      if (!sources.length) {
+        listEl.innerHTML = '<p class="hint">暂无自定义源，点下方添加，或切到「粘贴 JSON」。</p>';
+        return;
+      }
+      sources.forEach((s, i) => {
+        const div = document.createElement('div');
+        div.className = 'src';
+        div.innerHTML = `
+          <div class="src-title"><span>源 ${i + 1}</span>
+            <button type="button" class="btn danger" data-del="${i}" style="width:auto;padding:6px 10px;font-size:.85rem">删除</button>
+          </div>
+          <label>名称</label>
+          <input type="text" data-k="name" data-i="${i}" value="${escapeAttr(s.name || '')}" placeholder="例如：我的接口" />
+          <label>API 地址</label>
+          <input type="url" data-k="url" data-i="${i}" value="${escapeAttr(s.url || '')}" placeholder="https://example.com/api.php/provide/vod" />
+          <div class="row"><input type="checkbox" data-k="isAdult" data-i="${i}" ${s.isAdult ? 'checked' : ''} /><label style="margin:0">成人源</label></div>
+        `;
+        listEl.appendChild(div);
+      });
+      listEl.querySelectorAll('[data-del]').forEach(btn => {
+        btn.onclick = () => { sources.splice(+btn.dataset.del, 1); render(); };
+      });
+      listEl.querySelectorAll('input').forEach(inp => {
+        inp.onchange = inp.oninput = () => {
+          const i = +inp.dataset.i;
+          const k = inp.dataset.k;
+          if (k === 'isAdult') sources[i].isAdult = inp.checked;
+          else sources[i][k] = inp.value.trim();
+        };
+      });
+    }
+
+    function escapeAttr(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    }
+
+    function buildPayloadFromList() {
+      for (const s of sources) {
+        if (!s.name) throw new Error('请填写名称');
+        if (!/^https?:\/\/.+/i.test(s.url || '')) {
+          throw new Error('地址需以 http:// 或 https:// 开头：' + (s.name || ''));
+        }
+        s.url = s.url.replace(/\/+$/, '');
+      }
+      const customAPIs = sources.map(s => ({ name: s.name, url: s.url, isAdult: !!s.isAdult }));
+      const selectedAPIs = customAPIs.map((_, i) => 'custom_' + i);
+      return { customAPIs, selectedAPIs };
+    }
+
+    function parseSourcesFromJson(text) {
+      const data = JSON.parse(text);
+      if (!data || typeof data !== 'object') throw new Error('JSON 需为对象');
+      let list = null;
+      if (Array.isArray(data.sources)) list = data.sources;
+      else if (Array.isArray(data.customAPIs)) list = data.customAPIs;
+      else if (Array.isArray(data.apis)) list = data.apis;
+      else if (data.name === 'Veliora-Settings' || data.name === 'LibreTV-Settings') {
+        const inner = data.data || {};
+        let raw = inner.customAPIs;
+        if (typeof raw === 'string') raw = JSON.parse(raw);
+        if (Array.isArray(raw)) list = raw;
+      }
+      if (!list) throw new Error('未找到 sources / customAPIs');
+      const out = list.map(x => ({
+        name: String((x && (x.name || '')) || '').trim() || '自定义源',
+        url: String((x && (x.url || x.api || '')) || '').trim().replace(/\/+$/, ''),
+        isAdult: !!(x && x.isAdult)
+      })).filter(x => /^https?:\/\//i.test(x.url));
+      if (!out.length) throw new Error('没有有效的 http(s) 地址');
+      return out;
+    }
+
+    function xhrJson(method, url, body) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open(method, url, true);
+        xhr.timeout = 15000;
+        xhr.setRequestHeader('Accept', 'application/json');
+        if (body != null) xhr.setRequestHeader('Content-Type', 'application/json;charset=UTF-8');
+        xhr.onload = () => {
+          let data = null;
+          try { data = JSON.parse(xhr.responseText || '{}'); } catch (_) {}
+          if (xhr.status >= 200 && xhr.status < 300) resolve(data || { ok: true });
+          else reject(new Error((data && (data.message || data.error)) || ('HTTP ' + xhr.status)));
+        };
+        xhr.onerror = () => reject(new Error('网络失败（Load failed）。请点「备用保存」，并保持电视二维码弹窗开着'));
+        xhr.ontimeout = () => reject(new Error('请求超时，请确认与电视同一 Wi‑Fi'));
+        xhr.send(body == null ? null : JSON.stringify(body));
+      });
+    }
+
+    async function postConfig(bodyObj) {
+      // 1) fetch
+      try {
+        const res = await fetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(bodyObj),
+          cache: 'no-store',
+          mode: 'cors',
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data.ok === false) throw new Error(data.message || data.error || ('HTTP ' + res.status));
+        return data;
+      } catch (e1) {
+        // 2) XHR 兜底
+        try {
+          return await xhrJson('POST', API, bodyObj);
+        } catch (e2) {
+          throw e2.message ? e2 : e1;
+        }
+      }
+    }
+
+    function submitForm(bodyObj) {
+      document.getElementById('fallbackJson').value = JSON.stringify(bodyObj);
+      document.getElementById('fallbackForm').submit();
+    }
+
+    async function load() {
+      try {
+        const res = await fetch(API, { cache: 'no-store' });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || '加载失败');
+        sources = Array.isArray(data.customAPIs) ? data.customAPIs.map(x => ({
+          name: x.name || '',
+          url: x.url || '',
+          isAdult: !!x.isAdult
+        })) : [];
+        render();
+        showMsg('已从电视加载 ' + sources.length + ' 条', true);
+      } catch (e) {
+        showMsg('加载失败：' + e.message, false);
+        render();
+      }
+    }
+
+    async function save() {
+      try {
+        const payload = buildPayloadFromList();
+        await postConfig(payload);
+        showMsg('已保存，请回到电视点「完成」', true);
+      } catch (e) {
+        showMsg('保存失败：' + e.message, false);
+      }
+    }
+
+    function saveForm() {
+      try {
+        submitForm(buildPayloadFromList());
+      } catch (e) {
+        showMsg('保存失败：' + e.message, false);
+      }
+    }
+
+    function applyParsedToList() {
+      try {
+        const text = jsonBox.value.trim();
+        if (!text) { showMsg('请先粘贴 JSON', false); return; }
+        sources = parseSourcesFromJson(text);
+        render();
+        setTab('list');
+        showMsg('已解析 ' + sources.length + ' 条到列表，请确认后点「保存到电视」', true);
+      } catch (e) {
+        showMsg('解析失败：' + e.message, false);
+      }
+    }
+
+    async function importAndSave() {
+      try {
+        const text = jsonBox.value.trim();
+        if (!text) { showMsg('请先粘贴 JSON', false); return; }
+        const obj = JSON.parse(text);
+        await postConfig(obj);
+        try { sources = parseSourcesFromJson(text); render(); } catch (_) {}
+        showMsg('已导入并保存到电视，请回到电视点「完成」', true);
+        setTab('list');
+      } catch (e) {
+        showMsg('导入失败：' + e.message, false);
+      }
+    }
+
+    function importForm() {
+      try {
+        const text = jsonBox.value.trim();
+        if (!text) { showMsg('请先粘贴 JSON', false); return; }
+        submitForm(JSON.parse(text));
+      } catch (e) {
+        showMsg('导入失败：' + e.message, false);
+      }
+    }
+
+    document.getElementById('tabList').onclick = () => setTab('list');
+    document.getElementById('tabJson').onclick = () => setTab('json');
+    document.getElementById('btnAdd').onclick = () => {
+      sources.push({ name: '', url: '', isAdult: false });
+      render();
+    };
+    document.getElementById('btnSave').onclick = save;
+    document.getElementById('btnSaveForm').onclick = saveForm;
+    document.getElementById('btnReload').onclick = load;
+    document.getElementById('btnParse').onclick = applyParsedToList;
+    document.getElementById('btnImportSave').onclick = importAndSave;
+    document.getElementById('btnImportForm').onclick = importForm;
+    load();
+  </script>
+</body>
+</html>
